@@ -6,32 +6,33 @@ import pandas as pd
 import numpy as np
 from pydantic import BaseModel
 import pymongo
+def load():
+    job_postings_df=pd.read_csv('projects_data.csv')
+    candidate_profiles_df=pd.read_csv('users_data.csv')
 
-job_postings_df=pd.read_csv('projects_data.csv')
-candidate_profiles_df=pd.read_csv('users_data.csv')
+    # Encode the skills using MultiLabelBinarizer
+    mlb = MultiLabelBinarizer()
 
-# Encode the skills using MultiLabelBinarizer
-mlb = MultiLabelBinarizer()
-
-# Directly work with the columns without using eval
-job_postings_df['technologies'] = job_postings_df['technologies'].apply(lambda x: x if isinstance(x, list) else eval(x))
-candidate_profiles_df['skill'] = candidate_profiles_df['skill'].apply(lambda x: x if isinstance(x, list) else eval(x))
+    # Directly work with the columns without using eval
+    job_postings_df['technologies'] = job_postings_df['technologies'].apply(lambda x: x if isinstance(x, list) else eval(x))
+    candidate_profiles_df['skill'] = candidate_profiles_df['skill'].apply(lambda x: x if isinstance(x, list) else eval(x))
 
 
-job_skills_encoded = mlb.fit_transform(job_postings_df['technologies'])
-candidate_skills_encoded = mlb.transform(candidate_profiles_df['skill'])
+    job_skills_encoded = mlb.fit_transform(job_postings_df['technologies'])
+    candidate_skills_encoded = mlb.transform(candidate_profiles_df['skill'])
 
-# Convert the encoded skills into DataFrames
-job_skills_df = pd.DataFrame(job_skills_encoded, columns=mlb.classes_)
-candidate_skills_df = pd.DataFrame(candidate_skills_encoded, columns=mlb.classes_)
+    # Convert the encoded skills into DataFrames
+    job_skills_df = pd.DataFrame(job_skills_encoded, columns=mlb.classes_)
+    candidate_skills_df = pd.DataFrame(candidate_skills_encoded, columns=mlb.classes_)
 
-# Combine the encoded skills with the original DataFrame
-job_postings_encoded_df = pd.concat([job_postings_df, job_skills_df], axis=1)
-candidate_profiles_encoded_df = pd.concat([candidate_profiles_df, candidate_skills_df], axis=1)
+    # Combine the encoded skills with the original DataFrame
+    job_postings_encoded_df = pd.concat([job_postings_df, job_skills_df], axis=1)
+    candidate_profiles_encoded_df = pd.concat([candidate_profiles_df, candidate_skills_df], axis=1)
 
-# Drop the original skills columns
-job_postings_encoded_df = job_postings_encoded_df.drop(['technologies'], axis=1)
-candidate_profiles_encoded_df = candidate_profiles_encoded_df.drop(['skill'], axis=1)
+    # Drop the original skills columns
+    job_postings_encoded_df = job_postings_encoded_df.drop(['technologies'], axis=1)
+    candidate_profiles_encoded_df = candidate_profiles_encoded_df.drop(['skill'], axis=1)
+    return job_postings_encoded_df, candidate_profiles_encoded_df, mlb
 
 
 app = FastAPI()
@@ -77,6 +78,7 @@ async def fetch_data(request: RunRequest):
 # Function to match a specific freelancer to all jobs
 def match_freelancer_to_jobs(profile_id, top_n=5):
     try:
+        job_postings_encoded_df, candidate_profiles_encoded_df, mlb=load()
         # Find the profile with the given profile_id
         candidate = candidate_profiles_encoded_df[candidate_profiles_encoded_df['_id'] == profile_id]
         if candidate.empty:
@@ -107,6 +109,7 @@ def match_freelancer_to_jobs(profile_id, top_n=5):
 # Function to match a specific job to all freelancers
 def match_job_to_freelancers(job_id, top_n=5):
     try:
+        job_postings_encoded_df, candidate_profiles_encoded_df, mlb=load()
         # Find the job with the given job_id
         job = job_postings_encoded_df[job_postings_encoded_df['_id'] == job_id]
         if job.empty:
