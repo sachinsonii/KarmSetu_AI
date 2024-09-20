@@ -6,7 +6,6 @@ import uvicorn
 import os
 from pydantic import BaseModel
 import pymongo
-from bson import ObjectId  # Required to handle MongoDB ObjectId
 
 app = FastAPI()
 
@@ -18,14 +17,6 @@ PROJECTS_COLLECTION = "projects"
 
 class RunRequest(BaseModel):
     run_code: bool
-
-# Helper function to convert ObjectId to string
-def convert_objectid_to_str(data):
-    if isinstance(data, list):
-        for record in data:
-            if '_id' in record and isinstance(record['_id'], ObjectId):
-                record['_id'] = str(record['_id'])
-    return data
 
 # Function to load and preprocess the data
 def load(job_postings_df, candidate_profiles_df):
@@ -65,13 +56,13 @@ async def fetch_data(request: RunRequest):
             users_data = list(db[USERS_COLLECTION].find())
             projects_data = list(db[PROJECTS_COLLECTION].find())
 
-            # Convert ObjectId to string for both collections
-            users_data = convert_objectid_to_str(users_data)
-            projects_data = convert_objectid_to_str(projects_data)
-
             # Convert to DataFrames
             users_df = pd.DataFrame(users_data)
             projects_df = pd.DataFrame(projects_data)
+
+            # Convert _id fields to string
+            users_df['_id'] = users_df['_id'].astype(str)
+            projects_df['_id'] = projects_df['_id'].astype(str)
 
             return {"message": "Data fetched and ready for matching."}, users_df, projects_df
         except Exception as e:
