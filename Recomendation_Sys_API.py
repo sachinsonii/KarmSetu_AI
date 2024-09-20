@@ -8,9 +8,10 @@ import uvicorn
 import os
 from pydantic import BaseModel
 import pymongo
+
 def load():
-    job_postings_df=pd.read_csv('projects_data.csv')
-    candidate_profiles_df=pd.read_csv('users_data.csv')
+    job_postings_df=projects_df
+    candidate_profiles_df=users_df
 
     # Encode the skills using MultiLabelBinarizer
     mlb = MultiLabelBinarizer()
@@ -62,16 +63,13 @@ async def fetch_data(request: RunRequest):
             projects_data = list(db[PROJECTS_COLLECTION].find())
 
             # Convert to DataFrames
+            global users_df
             users_df = pd.DataFrame(users_data)
+            global projects_df
             projects_df = pd.DataFrame(projects_data)
 
-            # Save users_data to CSV
-            users_df.to_csv('users_data.csv', index=False)
 
-            # Save projects_data to CSV
-            projects_df.to_csv('projects_data.csv', index=False)
-
-            return {"message": "Data fetched and saved to CSV files successfully."}
+            return users_df, projects_df, {"message": "Data fetched and saved to CSV files successfully."}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
     else:
@@ -157,4 +155,3 @@ def get_freelancer_recommendations(job_id: str):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))  # Use the port provided by Render
     uvicorn.run(app, host="0.0.0.0", port=port)
-
