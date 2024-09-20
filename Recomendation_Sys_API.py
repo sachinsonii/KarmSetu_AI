@@ -1,26 +1,32 @@
 import pandas as pd
 from sklearn.preprocessing import MultiLabelBinarizer
-from sklearn.feature_extraction.text import TfidfVectorizer
 from fastapi import FastAPI, HTTPException
-import pandas as pd
 import numpy as np
 import uvicorn
 import os
 from pydantic import BaseModel
 import pymongo
 
-def load():
-    job_postings_df=projects_df
-    candidate_profiles_df=users_df
+app = FastAPI()
 
-    # Encode the skills using MultiLabelBinarizer
+# MongoDB connection URL
+MONGO_URI = "mongodb+srv://surajsingh2004ok:76U-iMssyKKT2Vp@cluster0.1vhho4v.mongodb.net/karmsetu?"
+DATABASE_NAME = "karmsetu"
+USERS_COLLECTION = "users"
+PROJECTS_COLLECTION = "projects"
+
+class RunRequest(BaseModel):
+    run_code: bool
+
+# Function to load and preprocess the data
+def load(job_postings_df, candidate_profiles_df):
     mlb = MultiLabelBinarizer()
 
-    # Directly work with the columns without using eval
+    # Handle the 'technologies' and 'skill' columns safely
     job_postings_df['technologies'] = job_postings_df['technologies'].apply(lambda x: x if isinstance(x, list) else eval(x))
     candidate_profiles_df['skill'] = candidate_profiles_df['skill'].apply(lambda x: x if isinstance(x, list) else eval(x))
 
-
+    # Encode the skills using MultiLabelBinarizer
     job_skills_encoded = mlb.fit_transform(job_postings_df['technologies'])
     candidate_skills_encoded = mlb.transform(candidate_profiles_df['skill'])
 
@@ -35,19 +41,8 @@ def load():
     # Drop the original skills columns
     job_postings_encoded_df = job_postings_encoded_df.drop(['technologies'], axis=1)
     candidate_profiles_encoded_df = candidate_profiles_encoded_df.drop(['skill'], axis=1)
+
     return job_postings_encoded_df, candidate_profiles_encoded_df, mlb
-
-
-app = FastAPI()
-
-# MongoDB connection URL
-MONGO_URI = "mongodb+srv://surajsingh2004ok:76U-iMssyKKT2Vp@cluster0.1vhho4v.mongodb.net/karmsetu?"
-DATABASE_NAME = "karmsetu"
-USERS_COLLECTION = "users"
-PROJECTS_COLLECTION = "projects"
-
-class RunRequest(BaseModel):
-    run_code: bool
 
 @app.post("/fetch-data/")
 async def fetch_data(request: RunRequest):
@@ -57,28 +52,26 @@ async def fetch_data(request: RunRequest):
             client = pymongo.MongoClient(MONGO_URI)
             db = client[DATABASE_NAME]
 
-            # Fetch users data
+            # Fetch users and projects data
             users_data = list(db[USERS_COLLECTION].find())
-            # Fetch projects data
             projects_data = list(db[PROJECTS_COLLECTION].find())
 
             # Convert to DataFrames
-            global users_df
             users_df = pd.DataFrame(users_data)
-            global projects_df
             projects_df = pd.DataFrame(projects_data)
 
-
-            return users_df, projects_df, {"message": "Data fetched and saved to CSV files successfully."}
+            return {"message": "Data fetched and ready for matching."}, users_df, projects_df
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
     else:
         return {"message": "Code execution skipped as per request."}
 
 # Function to match a specific freelancer to all jobs
-def match_freelancer_to_jobs(profile_id, top_n=5):
+def match_freelancer_to_jobs(profile_id, users_df, projects_df, top_n=5):
     try:
-        job_postings_encoded_df, candidate_profiles_encoded_df, mlb=load()
+        # Load and encode the data
+        job_postings_encoded_df, candidate_profiles_encoded_df, mlb = load(projects_df, users_df)
+
         # Find the profile with the given profile_id
         candidate = candidate_profiles_encoded_df[candidate_profiles_encoded_df['_id'] == profile_id]
         if candidate.empty:
@@ -107,9 +100,11 @@ def match_freelancer_to_jobs(profile_id, top_n=5):
         return []  # Return an empty list if the profile_id is not found
 
 # Function to match a specific job to all freelancers
-def match_job_to_freelancers(job_id, top_n=5):
+def match_job_to_freelancers(job_id, users_df, projects_df, top_n=5):
     try:
-        job_postings_encoded_df, candidate_profiles_encoded_df, mlb=load()
+        # Load and encode the data
+        job_postings_encoded_df, candidate_profiles_encoded_df, mlb = load(projects_df, users_df)
+
         # Find the job with the given job_id
         job = job_postings_encoded_df[job_postings_encoded_df['_id'] == job_id]
         if job.empty:
@@ -139,18 +134,23 @@ def match_job_to_freelancers(job_id, top_n=5):
 
 @app.get("/freelancer/{profile_id}")
 def get_job_recommendations(profile_id: str):
-    job_ids = match_freelancer_to_jobs(profile_id)
+    # Call fetch_data to ensure data is loaded
+    _, users_df, projects_df = fetch_data(RunRequest(run_code=True))
+
+    job_ids = match_freelancer_to_jobs(profile_id, users_df, projects_df)
     if not job_ids:
         raise HTTPException(status_code=404, detail="Profile not found or no matches found")
     return {"_id": job_ids}
 
 @app.get("/job/{job_id}")
 def get_freelancer_recommendations(job_id: str):
-    freelancer_ids = match_job_to_freelancers(job_id)
+    # Call fetch_data to ensure data is loaded
+    _, users_df, projects_df = fetch_data(RunRequest(run_code=True))
+
+    freelancer_ids = match_job_to_freelancers(job_id, users_df, projects_df)
     if not freelancer_ids:
         raise HTTPException(status_code=404, detail="Job not found or no matches found")
     return {"_id": freelancer_ids}
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))  # Use the port provided by Render
