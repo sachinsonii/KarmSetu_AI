@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 import pandas as pd
 import numpy as np
 import uvicorn
+import os
 from pydantic import BaseModel
 import pymongo
 def load():
