@@ -4,6 +4,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from fastapi import FastAPI, HTTPException
 import pandas as pd
 import numpy as np
+import uvicorn
 from pydantic import BaseModel
 import pymongo
 def load():
@@ -150,4 +151,9 @@ def get_freelancer_recommendations(job_id: str):
     if not freelancer_ids:
         raise HTTPException(status_code=404, detail="Job not found or no matches found")
     return {"_id": freelancer_ids}
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))  # Use the port provided by Render
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
